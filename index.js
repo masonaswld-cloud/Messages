@@ -1,54 +1,79 @@
 const express = require("express");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 app.use(express.json());
 
-const messages = {};
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SECRET_KEY
+);
 
 app.get("/", (req, res) => {
   res.json({
     status: "online",
     service: "Messages API",
-    version: "1.0.0"
+    version: "2.0.0"
   });
 });
 
-app.post("/message", (req, res) => {
-  const { userId, username } = req.body;
+// Record a message
+app.post("/message", async (req, res) => {
+  const { userId, username, guildId } = req.body;
 
-  if (!userId) {
+  if (!userId || !username || !guildId) {
     return res.status(400).json({
       status: "error",
-      message: "Missing userId"
+      message: "Missing user information"
     });
   }
 
-  if (!messages[userId]) {
-    messages[userId] = {
-      username: username || "Unknown",
-      count: 0
-    };
+  const { data, error } = await supabase.rpc(
+    "increment_message_count",
+    {
+      p_user_id: String(userId),
+      p_username: String(username),
+      p_guild_id: String(guildId)
+    }
+  );
+
+  if (error) {
+    return res.status(500).json({
+      status: "error",
+      message: error.message
+    });
   }
 
-  messages[userId].username = username || messages[userId].username;
-  messages[userId].count++;
+  res.json({
+    status: "success",
+    user: username,
+    messages: data
+  });
+});
+
+// Get a user's messages
+app.get("/messages/:guildId/:userId", async (req, res) => {
+  const { guildId, userId } = req.params;
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("guild_id", guildId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    return res.status(500).json({
+      status: "error",
+      message: error.message
+    });
+  }
 
   res.json({
     status: "success",
     userId,
-    username: messages[userId].username,
-    messages: messages[userId].count
-  });
-});
-
-app.get("/messages/:userId", (req, res) => {
-  const user = messages[req.params.userId];
-
-  res.json({
-    status: "success",
-    userId: req.params.userId,
-    username: user?.username || "Unknown",
-    messages: user?.count || 0
+    username: data?.username || "Unknown",
+    messages: data?.message_count || 0
   });
 });
 
