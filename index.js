@@ -19,6 +19,15 @@ app.get("/", (req, res) => {
 
 // Record a message
 app.post("/message", async (req, res) => {
+  if (
+    req.headers["x-api-secret"] !==
+    process.env.BOT_API_SECRET
+  ) {
+    return res.status(401).json({
+      status: "error",
+      message: "Unauthorized"
+    });
+  }
   const { userId, username, guildId } = req.body;
 
   if (!userId || !username || !guildId) {
